@@ -2,7 +2,7 @@
 
 # 坐标系
 
-![image-20220715001314259](C:/Users/Administrator/AppData/Roaming/Typora/typora-user-images/image-20220715001314259.png)
+![image-20220715001314259](image-20220715001314259.png)
 
 **除了在观察空间中, 其他都是在左手系**
 
