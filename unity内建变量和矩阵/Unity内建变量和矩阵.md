@@ -218,3 +218,17 @@ Shader "Unlit/UnityPBS"
 
 ```
 
+## 光照衰减相关
+
+头文件
+
+```cc
+#include "AutoLight.cginc"
+
+#define UNITY_LIGHT_ATTENUATION(
+	varName,
+	input,
+	worldPosition
+)
+```
+
