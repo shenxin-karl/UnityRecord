@@ -53,6 +53,7 @@ float3 Shade4PointLights (
 
 // forward & forward add
 float3 UnityObjectToWorldNormal(float3 normal);				// 变换到世界空间法线
+float3 UnityObjectToWorldDir(float3 dir);				// 变换到世界空间中的向量
 float3 UnityWorldSpaceLightDir(float3 wolrdPosition);		// 获取世界空间L方向, 需要归一化
 float3 UnityWorldSpaceViewDir(float3 wolrdPosition);		// 获取世界空间V方向, 需要归一化
 
@@ -70,7 +71,7 @@ float3 ShadeSH9(float3 normal);								// 获取球谐函数
 
 **Unity 光照相关变量**
 
-需要包含头文件 `UnityCG.cginc`
+需要包含头文件 `UnityCG.cginc`  `UnityLightingCommon.cginc`
 
 | 名称                                                         | 类型       | 描述                                                         |
 | ------------------------------------------------------------ | ---------- | ------------------------------------------------------------ |
@@ -232,3 +233,66 @@ Shader "Unlit/UnityPBS"
 )
 ```
 
+## 非重要光源
+
+**顶点光源**
+
+```cc
+// 计算顶点的四个非重要光源, 返回顶点颜色
+float3 Shade4PointLights(
+	float4 unity_4LightPosX0,
+    float4 unity_4LightPosY0,
+    float4 unity_4LightPosZ0,
+    float3 unity_LightColor0,
+    float3 unity_LightColor1,
+    float3 unity_LightColor2,
+    float3 unity_LightColor3,
+    float4 unity_4LightAtten0,
+    float3 worldNormal,
+    float3 worldPosition
+);
+// example
+vout.vertexLightColor = Shade4PointLights(
+    unity_4LightPosX0, unity_4LightPosY0, unity_4LightPosZ0,
+    unity_LightColor[0], unity_LightColor[1], unity_LightColor[2], unity_LightColor[3],
+	unity_4LightAtten0, vout.normal, vout.position
+);
+```
+
+**球谐光照**
+
+```cc
+float3 ShadeSH9(float4 worldNormal);
+
+// example
+float3 diffuseColor += max(0, ShaderSH9(float4(pin.normal, 1.0)));
+```
+
+
+
+## 完整的顶点多光源例子
+
+ [MY_LIGHTING_INCLUDE.cginc](MY_LIGHTING_INCLUDE.cginc) 
+
+ [MultiLIghtShader.shader](MultiLIghtShader.shader) 
+
+
+
+## 法线贴图相关
+
+```cc
+#include "UnityStandardUtils.cginc"
+
+// 解压法线贴图. 法线可能是被压缩过的
+float3 UnpackNormal(float4 packedNormal);
+float3 UnpackScaleNormal(float4 packedNormal, float bumpScale);			
+
+// 混合两个法线(Unity提供)
+float3 BlendNormals(float3 n1, float3 n2) {
+    return normalize(float3(n1.xy + n2.xy, n1.z * n2.x));
+}			
+```
+
+完整的法线贴图例子
+
+ [BumpMapShader.shader](BumpMapShader.shader) 
