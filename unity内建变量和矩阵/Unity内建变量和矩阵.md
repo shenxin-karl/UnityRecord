@@ -357,9 +357,13 @@ float4 frag() : SV_Target {
 **1. `SHADOW_COORDS(n)` 在插值结构体中使用**
 
 ```cc
+struct VertexIn {
+  	float4 vertex : POSITION;			// 模型空间只能命名为 vertex  
+};
+
 struct VertexOut {
     float4 pos      : SV_POSITION;		// 要使用阴影宏时, 这个 SV_POSITION 只能命名为 pos
-    float3 position : TEXCOORD0;
+    float4 position : TEXCOORD0;
     float3 normal   : TEXCOORD1;
     float2 texcoord : TEXCOORD2;
     SHADOW_COORDS(3)					// 这里的 n 会被展开为 : TEXCOORD##n
@@ -389,3 +393,38 @@ fixed4 frag(VertexOut pin) : SV_TARGET {
 
 ## 多阴影
 
+默认情况下阴影只支持单个光源, 要支持多光源阴影时, 需要在 **ForwardAdd Pass** 中使用下面的指令
+
+```cc
+// #pragma multi_compile_fwdadd			// 替换 multi_compile_fwdadd
+#pragam multi_compile_fwdadd_fullshadows
+```
+
+对于 **ForwardAdd Pass** 可能跑 **方向光, 聚光灯, 点光源**.
+
+
+
+### 点光源阴影
+
+当我们为点光源开启阴影时, 需要做额外处理
+
+```cc
+pass 
+{
+    Tags { "LightMode" = "ShadowCaster" }
+    CGPROGRAM
+    #pragma multi_compile_shadowcaster
+    ...
+    ENDCG       
+}
+```
+
+
+
+
+
+点光源的 **ShadowCaster Pass** 是不同的, 完整例子如下
+
+
+
+ [MyShadowCaster.cginc](MyShadowCaster.cginc) 
