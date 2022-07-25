@@ -237,6 +237,10 @@ Shader "Unlit/UnityPBS"
 
 **顶点光源**
 
+计算多光源时, **ForwardBase Pass** 中需要加入 
+
+**#pragma multi_compile _ VERTEXLIGHT_ON**
+
 ```cc
 // 计算顶点的四个非重要光源, 返回顶点颜色
 float3 Shade4PointLights(
@@ -296,3 +300,92 @@ float3 BlendNormals(float3 n1, float3 n2) {
 完整的法线贴图例子
 
  [BumpMapShader.shader](BumpMapShader.shader) 
+
+
+
+
+
+## 投射阴影
+
+```cc
+// 返回偏移后的裁剪空间位置
+// clipPos 裁剪空间位置
+float4 UnityApplyLinearShadowBias(float4 clipPos) {
+   	clipPos.z += saturate(unity_LightShadowBias.x / clipPos.w);
+    float clamped = max(clipPos.z, clipPos.w * UNITY_NEAR_CLIP_VALUE);
+    clipPos.z = lerp(clipPos.z, clamped, unity_LightShadowBias.y);
+    return clipPos;
+}
+
+// 返回应用法线偏移后的裁剪空间的位置
+// modelPos 模型位置
+// modelNormal 模型法线
+float4 UnityClipSpaceShadowCasterPos(float3 modelPos, float3 modelNormal);
+```
+
+例子
+
+```cc
+struct VertexIn {
+	float3 vertex : POSITION;
+	float3 normal : NORMAL;
+};
+
+float4 vert(VertexIn vin) : SV_POSITION {
+	float4 clipPos = UnityClipSpaceShadowCasterPos(vin.vertex, vin.normal);
+	return UnityApplyLinearShadowBias(clipPos);
+}
+
+float4 frag() : SV_Target {
+	return float4(0.0, 0.0, 0.0, 1.0);
+}
+```
+
+
+
+## 接受阴影
+
+在接受阴影是, 在 **ForwardBase** 需要添加下面的变体, 同时包含头文件
+
+```cc
+#pragma multi_compile _ SHADOWS_SCREEN		// 阴影必须使用
+
+#include "Lighting.cginc"
+#include "AutoLight.cginc"
+```
+
+**1. `SHADOW_COORDS(n)` 在插值结构体中使用**
+
+```cc
+struct VertexOut {
+    float4 pos      : SV_POSITION;		// 要使用阴影宏时, 这个 SV_POSITION 只能命名为 pos
+    float3 position : TEXCOORD0;
+    float3 normal   : TEXCOORD1;
+    float2 texcoord : TEXCOORD2;
+    SHADOW_COORDS(3)					// 这里的 n 会被展开为 : TEXCOORD##n
+}
+```
+
+**2. 在顶点结构体中使用 `TRANSFER_SHADOW(o)`**
+
+```cc
+VertexOut vert(VertexIn vin) {
+    VertexOut vout;
+   	...
+	TRANSFER_SHADOW(vout);			// 这里做光空间的变换
+    return vout;
+}
+```
+
+**3. 片段着色器中获取衰减 `UNITY_LIGHT_ATTENUATION(var, input, worldPosition)`**
+
+```cc
+fixed4 frag(VertexOut pin) : SV_TARGET {
+    ...
+    UNITY_LIGHT_ATTENUATION(attenuation, pin, pin.position);
+    return (diffuse + specular) * attenuation;
+}
+```
+
+## 多阴影
+
