@@ -428,3 +428,36 @@ pass
 
 
  [MyShadowCaster.cginc](MyShadowCaster.cginc) 
+
+
+
+## 采样天空盒
+
+头文件
+
+```cc
+#include "unity_SpecCube0.cginc"
+```
+
+采样函数
+
+```cc
+samplerCube unity_SpecCube0;			// 天空盒采样器
+
+// 解码 HDR 值. 
+// unity_SpecCube0_HDR 给 unity_SpecCube0 解码的变量
+inline half3 DecodeHDR(half4 data, half4 decodeInstructions = unity_SpecCube0_HDR);
+
+#define UNITY_SAMPLE_TEXCUBE(sampleCube, dir)			// 采样天空盒
+#define UNITY_SAMPLE_TEXCUBE_LOD(sampleCube, dir, lod)	// 采样天空盒的 lod
+```
+
+**采样天空盒**
+
+```cc
+float roughness = (1.0 - _Smoothness);
+float lod = roughness * UNITY_SPECCUBE_LOD_STEPS;						// UNITY_SPECCUBE_LOD_STEPS 是天空盒的 LOD 级别. 使用 IBL 采样对应级别的 lod
+float4 envColor = UNITY_SAMPLE_TEXCUBE_LOD(unity_SpecCube0, R, lod);
+indirectLight.specular = DecodeHDR(envColor, unity_SpecCube0_HDR);
+```
+
