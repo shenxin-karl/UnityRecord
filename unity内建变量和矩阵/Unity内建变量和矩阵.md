@@ -450,14 +450,31 @@ inline half3 DecodeHDR(half4 data, half4 decodeInstructions = unity_SpecCube0_HD
 
 #define UNITY_SAMPLE_TEXCUBE(sampleCube, dir)			// 采样天空盒
 #define UNITY_SAMPLE_TEXCUBE_LOD(sampleCube, dir, lod)	// 采样天空盒的 lod
+
+// 提供粗糙度和采样向量, 帮我我们采样 天空盒
+struct Unity_GlossyEnvironmentData {
+	float roughness;
+    float3 reflUVW;
+};
+half3 Unity_GlossyEnvironment(UNITY_ARGS_TEXCUBE(tex), half4 hdr, Unity_GlossyEnvironmentData glossIn);
 ```
 
 **采样天空盒**
 
 ```cc
+// 手动采样
 float roughness = (1.0 - _Smoothness);
 float lod = roughness * UNITY_SPECCUBE_LOD_STEPS;						// UNITY_SPECCUBE_LOD_STEPS 是天空盒的 LOD 级别. 使用 IBL 采样对应级别的 lod
 float4 envColor = UNITY_SAMPLE_TEXCUBE_LOD(unity_SpecCube0, R, lod);
 indirectLight.specular = DecodeHDR(envColor, unity_SpecCube0_HDR);
+
+// Unity_GlossyEnvironment 函数帮助我们采样 
+// UNITY_PASS_TEXCUBE 宏能够帮我们ch
+Unity_GlossyEnvironmentData envData;
+envData.roughness = 1 - _Smoothness;
+envData.reflUVW = reflectionDir;
+indirectLight.specular = Unity_GlossyEnvironment(
+    UNITY_PASS_TEXCUBE(unity_SpecCube0), unity_SpecCube0_HDR, envData
+);
 ```
 
