@@ -478,3 +478,36 @@ indirectLight.specular = Unity_GlossyEnvironment(
 );
 ```
 
+## 盒投影
+
+使用探针捕捉信息时, 不能直接按照反射方向采样. 需要判断是否是盒投影, 如果是盒投影, 需要计算出与探针盒的交点作为采样方向
+
+可以通过判断 `unity_SpecCube0_ProbePosition.w > 0` 判断是否是盒投影
+
+```cc
+float3 BoxProjection(float3 direction, float3 position, float4 cubemapPosition, float3 boxMin, float3 boxMax) {
+    UNITY_BRANCH
+    if (cubemapPosition.w > 0.0) {
+	  	boxMin -= position;
+		boxMax -= position;
+		float3 factors = ((direction > 0 ? boxMax : boxMin) - position) / direction;
+		float scalar = min(min(factors.x, factors.y), factors.z);
+		return direction * scalar + (position - cubemapPosition);  
+    }
+    return direction;
+}
+
+// 采用盒投影
+Unity_GlossyEnvironmentData envData;
+envData.roughness = 1 - _Smoothness;
+float3 R = normalize(reflect(-V, pin.normal));
+envData.reflUVW = BoxProjection(
+    R, pin.position,
+    unity_SpecCube0_ProbePosition,
+    unity_SpecCube0_BoxMin, unity_SpecCube0_BoxMax
+);
+indirectLight.specular = Unity_GlossyEnvironment(
+    UNITY_PASS_TEXCUBE(unity_SpecCube0), unity_SpecCube0_HDR, envData
+);
+```
+
