@@ -486,28 +486,56 @@ indirectLight.specular = Unity_GlossyEnvironment(
 
 ```cc
 float3 BoxProjection(float3 direction, float3 position, float4 cubemapPosition, float3 boxMin, float3 boxMax) {
-    UNITY_BRANCH
-    if (cubemapPosition.w > 0.0) {
-	  	boxMin -= position;
-		boxMax -= position;
-		float3 factors = ((direction > 0 ? boxMax : boxMin) - position) / direction;
-		float scalar = min(min(factors.x, factors.y), factors.z);
-		return direction * scalar + (position - cubemapPosition);  
-    }
+	// 如果开启盒tou'y
+    #if UNITY_SPECCUBE_BOX_PROJECTION
+		UNITY_BRANCH
+	    if (cubemapPosition.w > 0.0) {
+    		float3 factors = ((direction > 0 ? boxMax : boxMin) - position) / direction;
+			float scalar = min(min(factors.x, factors.y), factors.z);
+			direction = direction * scalar + (position - cubemapPosition); 
+	    }
+	#endif
     return direction;
 }
 
-// 采用盒投影
-Unity_GlossyEnvironmentData envData;
-envData.roughness = 1 - _Smoothness;
-float3 R = normalize(reflect(-V, pin.normal));
-envData.reflUVW = BoxProjection(
-    R, pin.position,
-    unity_SpecCube0_ProbePosition,
-    unity_SpecCube0_BoxMin, unity_SpecCube0_BoxMax
-);
-indirectLight.specular = Unity_GlossyEnvironment(
-    UNITY_PASS_TEXCUBE(unity_SpecCube0), unity_SpecCube0_HDR, envData
-);
+UnityIndirect CreateUnityIndirectLight(VertexOut pin, float3 albedo, float3 V) {
+	UnityIndirect indirectLight;
+    indirectLight.diffuse = 0;
+    indirectLight.specular = 0;
+
+#ifdef FORWARD_BASE
+	indirectLight.diffuse = max(0, ShadeSH9(float4(pin.normal, 1.0)));
+
+    Unity_GlossyEnvironmentData envData;
+	envData.roughness = 1 - _Smoothness;
+    float3 R = reflect(-V, pin.normal);
+	envData.reflUVW = BoxProjection(
+			R, pin.position,
+			unity_SpecCube0_ProbePosition,
+			unity_SpecCube0_BoxMin, unity_SpecCube0_BoxMax
+		);
+	float3 probe0 = Unity_GlossyEnvironment(UNITY_PASS_TEXCUBE(unity_SpecCube0), unity_SpecCube0_HDR, envData);
+	
+    // 如果混合多个探针
+	#if UNITY_SPECCUBE_BLENDING
+		envData.reflUVW = BoxProjection(
+			R, pin.position,
+			unity_SpecCube1_ProbePosition,
+			unity_SpecCube1_BoxMin, unity_SpecCube1_BoxMax
+		);
+		float3 probe1 = Unity_GlossyEnvironment(
+			UNITY_PASS_TEXCUBE_SAMPLER(unity_SpecCube1, unity_SpecCube0), unity_SpecCube0_HDR, envData
+		);
+		indirectLight.specular = lerp(probe1, probe0, unity_SpecCube0_BoxMin.w);
+	#else
+		indirectLight.specular = probe0;
+    #endif
+#endif
+
+#if defined(VERTEXLIGHT_ON)
+	indirectLight.diffuse += pin.vertexLightColor;
+#endif
+    return indirectLight;
+}
 ```
 
