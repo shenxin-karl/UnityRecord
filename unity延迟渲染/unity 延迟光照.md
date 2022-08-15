@@ -347,7 +347,7 @@ Blend [_SrcBlend] [_DstBlend]
 
 ### 支持聚光灯
 
-当前，CreateLight仅适用于定向光源。让我们确保仅在适当的情况下使用特定于定向灯的代码
+当前，**CreateLight** 仅适用于定向光源。让我们确保仅在适当的情况下使用特定于定向灯的代码
 
 通过 **_LightPos** 可以访问到聚光灯的位置
 
@@ -408,7 +408,7 @@ VertexOut vert(VertexIn vin) {
 
 ### **Cookie衰减**
 
-聚光灯的圆锥衰减是通过cookie纹理创建的. 聚光灯Cookie越远离你的灯光位置，它就会变得越大, 因为聚光灯的 **unity_WorldToLight** 是透视矩阵. 所以需要进行**齐次除法**
+聚光灯的圆锥衰减是通过 **cookie** 纹理创建的. 聚光灯Cookie越远离你的灯光位置，它就会变得越大, 因为聚光灯的 **unity_WorldToLight** 是透视矩阵. 所以需要进行**齐次除法**
 
 ```cc
 float4 lightCookieTexcoord = mul(unity_WorldToLight, float4(worldPos, 1.0));
@@ -438,3 +438,124 @@ lightAttenuation *= tex2D(_LightTextureB0, (dot(lightVec, lightVec) * _LightPos.
 
 ### 阴影
 
+当聚光灯具有阴影时，定义 **SHADOWS_DEPTH** 关键字. 聚光灯和定向光使用相同的变量来采样其阴影贴图。对于聚光灯，可以使用**UnitySampleShadowmap** 来处理对硬阴影或软阴影进行采样的细节
+
+```cc
+UnityLight CreateLight(float2 texcoord, float3 worldPos, float viewZ) {
+	#if defined(DIRECTIONAL) || defined(DIRECTIONAL_COOKIE)
+
+	#else
+		float3 lightVec = _LightPos.xyz - worldPos;
+    	light.dir = normalize(lightVec);
+    	#if defined(SHADOWS_DEPTH)
+    		shadowed = true;
+    		shadowAttenuation = UnitySampleShadowmap(mul(unity_WorldToShadow[0], float4(worldPos, 1.0)));
+    	#endif
+	#endif
+    
+    if (shadowed) {
+        ...
+	}
+}
+```
+
+## 点光源
+
+点光源与聚光灯使用相同的光矢量，方向和距离衰减。这样他们就可以共享该代码。其余的 **Spotlight** 代码仅应在定义SPOT关键字时使用
+
+### 光照计算
+
+```cc
+#if defined(DIRECTIONAL) || defined(DIRECTIONAL_COOKIE)
+    ...
+// 如果是 点光源或者聚光灯
+#else	
+    float3 lightVec = _LightPos.xyz - worldPos;
+    light.dir = normalize(lightVec);
+    // 计算距离衰减
+    lightAttenuation *= tex2D(_LightTextureB0, (dot(lightVec, lightVec) * _LightPos.w).rr).UNITY_ATTEN_CHANNEL;
+
+    #if defined(SPOT)
+        // 计算圆锥衰减, 计算 Cookies 衰减
+        float4 lightCookieTexcoord = mul(unity_WorldToLight, float4(worldPos, 1.0));
+        lightCookieTexcoord.xy /= lightCookieTexcoord.w;
+        lightAttenuation *= tex2D(_LightTexture0, lightCookieTexcoord.xy).w;
+        lightAttenuation *= lightCookieTexcoord.w < 0;
+        #if defined(SHADOWS_DEPTH)
+            shadowed = true;
+            shadowAttenuation = UnitySampleShadowmap(mul(unity_WorldToShadow[0], float4(worldPos, 1.0)));
+        #endif
+    #endif
+#endif
+```
+
+### 阴影
+
+点光源的阴影存储在立方体贴图中. **UnitySampleShadowmap**为我们处理采样. 在这种情况下，我们必须为其提供从光到表面的向量，以对立方体贴图进行采样. 这与光向量相反
+
+```cc
+#if defined(DIRECTIONAL) || defined(DIRECTIONAL_COOKIE)
+	...
+#else
+    float3 lightVec = _LightPos.xyz - worldPos;
+    light.dir = normalize(lightVec);
+    // 计算距离衰减
+    lightAttenuation *= tex2D(_LightTextureB0, (dot(lightVec, lightVec) * _LightPos.w).rr).UNITY_ATTEN_CHANNEL;
+    #if defined(SPOT)
+        ...
+    #else
+        // 处理点光源阴影    
+        #if defined(SHADOWS_CUBE)
+        	shadowed = true;
+            shadowAttenuation = UnitySampleShadowmap(-lightVec);
+        #endif
+    #endif
+#endif
+```
+
+### Cookies
+
+还可以通过 **_LightTexture0 **提供点光源cookie。但是，在这种情况下，我们需要一个立方体贴图而不是常规纹理
+
+```cc
+#if defined(POINT_COOKIE)
+	samplerCUBE _LightTexture0;
+#else
+	sampler2D _LightTexture0;
+#endif
+```
+
+要对 **Cookie** 进行采样，请将片段的世界位置转换为浅色空间，然后使用该采样对立方体贴图进行采样
+
+```cc
+float lightAttenuation = 1.0;
+#if defined(DIRECTIONAL) || defined(DIRECTIONAL_COOKIE)
+	...
+#else
+    float3 lightVec = _LightPos.xyz - worldPos;
+    light.dir = normalize(lightVec);
+    // 计算距离衰减
+    lightAttenuation *= tex2D(_LightTextureB0, (dot(lightVec, lightVec) * _LightPos.w).rr).UNITY_ATTEN_CHANNEL;
+    #if defined(SPOT)
+        ...
+    #else
+        // 处理点光源 cookie
+        #if defined(POINT_COOKIE)
+            float3 lightCookieTexcoord = mul(unity_WorldToLight, float4(worldPos, 1.0)).xyz;
+			lightAttenuation *= texCUBEbias(_LightTexture0, float4(lightCookieTexcoord, -8.0)).w;
+        #endif
+            
+        // 处理点光源阴影    
+        #if defined(SHADOWS_CUBE)
+        	shadowed = true;
+            shadowAttenuation = UnitySampleShadowmap(-lightVec);
+        #endif
+    #endif
+#endif
+```
+
+## 
+
+## **跳过阴影**
+
+### todo
